@@ -20,6 +20,7 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
 
     private final UserRepository userRepository;
     private final OAuth2AccountRepository oAuth2AccountRepository;
+    private final org.teamzemo.scarletauth.client.UserServiceClient userServiceClient;
 
     @Override
     @Transactional
@@ -38,6 +39,19 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
         }
 
         if (!oAuth2AccountRepository.existsByProviderAndProviderUserId(provider, providerUserId)) {
+            String tempFirstName = "";
+            String tempLastName = "";
+            if (fullName != null && !fullName.isBlank()) {
+                String[] parts = fullName.trim().split("\\s+", 2);
+                tempFirstName = parts[0];
+                tempLastName = parts.length > 1 ? parts[1] : "";
+            }
+            if (tempFirstName.isEmpty()) {
+                tempFirstName = email.split("@")[0];
+            }
+            final String finalFirstName = tempFirstName;
+            final String finalLastName = tempLastName;
+
             User user = userRepository.findByEmail(email)
                     .map(existingUser -> {
                         if (!existingUser.isEmailVerified()) {
@@ -51,12 +65,26 @@ public class CustomOAuth2UserService extends DefaultOAuth2UserService {
                         return userRepository.save(
                                 User.builder()
                                         .email(email)
-                                        .fullName(fullName)
+                                        .firstName(finalFirstName)
+                                        .lastName(finalLastName)
                                         .role("ROLE_USER")
                                         .emailVerified(true)
                                         .build()
                         );
                     });
+
+            // Sync user to scarlet-user downstream
+            try {
+                userServiceClient.syncUser(new org.teamzemo.scarletauth.dto.UserSyncRequest(
+                        user.getId(),
+                        user.getEmail(),
+                        user.getFirstName(),
+                        user.getLastName()
+                ));
+            } catch (Exception e) {
+                log.error("Failed to sync OAuth2 user to user service", e);
+                throw new OAuth2AuthenticationException("Failed to sync OAuth2 user downstream: " + e.getMessage());
+            }
 
             OAuth2Account oAuth2Account = OAuth2Account.builder()
                     .user(user)

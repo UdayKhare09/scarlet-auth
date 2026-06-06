@@ -66,7 +66,7 @@ public class WebAuthnController {
                 request.getUserHandle()
         );
 
-        String accessToken = jwtService.generateAccessToken(user.getEmail(), user.getId(), user.getFullName());
+        String accessToken = jwtService.generateAccessToken(user.getEmail(), user.getId(), user.getFirstName(), user.getLastName(), user.getRole());
         String refreshToken = jwtService.generateRefreshToken(user.getEmail(), user.getId());
         cookieUtils.setAccessTokenCookie(response, accessToken);
         cookieUtils.setRefreshTokenCookie(response, refreshToken);

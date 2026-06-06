@@ -37,7 +37,8 @@ public class WebAuthnService {
         Map<String, Object> userEntity = new LinkedHashMap<>();
         userEntity.put("id", base64UrlEncode(user.getId().toString().getBytes()));
         userEntity.put("name", user.getEmail());
-        userEntity.put("displayName", user.getFullName() != null ? user.getFullName() : user.getEmail());
+        String fullName = user.getFirstName() + (user.getLastName() != null && !user.getLastName().isBlank() ? " " + user.getLastName() : "");
+        userEntity.put("displayName", !fullName.isBlank() ? fullName : user.getEmail());
 
         List<Map<String, Object>> pubKeyCredParams = List.of(
                 Map.of("type", "public-key", "alg", -7),   // ES256

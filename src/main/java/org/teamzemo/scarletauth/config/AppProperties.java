@@ -12,6 +12,7 @@ public class AppProperties {
     private Jwt jwt = new Jwt();
     private Cors cors = new Cors();
     private WebAuthn webauthn = new WebAuthn();
+    private String userServiceUrl;
 
     @Data
     public static class Jwt {

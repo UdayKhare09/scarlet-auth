@@ -52,7 +52,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found after OAuth2 login"));
 
-        String accessToken = jwtService.generateAccessToken(email, user.getId(), user.getFullName());
+        String accessToken = jwtService.generateAccessToken(email, user.getId(), user.getFirstName(), user.getLastName(), user.getRole());
         String refreshToken = jwtService.generateRefreshToken(email, user.getId());
 
         cookieUtils.setAccessTokenCookie(response, accessToken);

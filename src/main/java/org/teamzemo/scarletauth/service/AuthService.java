@@ -39,6 +39,7 @@ public class AuthService {
     private final JwtService jwtService;
     private final CookieUtils cookieUtils;
     private final AuthenticationManager authenticationManager;
+    private final org.teamzemo.scarletauth.client.UserServiceClient userServiceClient;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -48,7 +49,8 @@ public class AuthService {
 
         User user = User.builder()
                 .email(request.getEmail())
-                .fullName(request.getFullName())
+                .firstName(request.getFirstName())
+                .lastName(request.getLastName())
                 .role("ROLE_USER")
                 .build();
         user = userRepository.save(user);
@@ -58,6 +60,19 @@ public class AuthService {
                 .passwordHash(passwordEncoder.encode(request.getPassword()))
                 .build();
         userPasswordRepository.save(userPassword);
+
+        // Sync new user to scarlet-user downstream synchronously
+        try {
+            userServiceClient.syncUser(new org.teamzemo.scarletauth.dto.UserSyncRequest(
+                    user.getId(),
+                    user.getEmail(),
+                    user.getFirstName(),
+                    user.getLastName()
+            ));
+        } catch (Exception e) {
+            log.error("Failed to sync registered user to user service", e);
+            throw new RuntimeException("Registration failed: Unable to sync user profile: " + e.getMessage());
+        }
 
         EmailVerificationToken verificationToken = EmailVerificationToken.builder()
                 .token(java.util.UUID.randomUUID().toString())
@@ -93,7 +108,7 @@ public class AuthService {
             return mfaChallenge;
         }
 
-        String accessToken = jwtService.generateAccessToken(user.getEmail(), user.getId(), user.getFullName());
+        String accessToken = jwtService.generateAccessToken(user.getEmail(), user.getId(), user.getFirstName(), user.getLastName(), user.getRole());
         String refreshToken = jwtService.generateRefreshToken(user.getEmail(), user.getId());
 
         cookieUtils.setAccessTokenCookie(response, accessToken);
@@ -125,7 +140,7 @@ public class AuthService {
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new RuntimeException("User not found"));
 
-        String newAccessToken = jwtService.generateAccessToken(user.getEmail(), user.getId(), user.getFullName());
+        String newAccessToken = jwtService.generateAccessToken(user.getEmail(), user.getId(), user.getFirstName(), user.getLastName(), user.getRole());
         cookieUtils.setAccessTokenCookie(response, newAccessToken);
 
         log.info("Token refreshed for user: {}", email);
@@ -209,16 +224,46 @@ public class AuthService {
     }
 
     private UserResponse toUserResponse(User user) {
+        String fullName = user.getFirstName();
+        if (user.getLastName() != null && !user.getLastName().isBlank()) {
+            fullName += " " + user.getLastName();
+        }
         return UserResponse.builder()
                 .id(user.getId())
                 .email(user.getEmail())
-                .fullName(user.getFullName())
+                .firstName(user.getFirstName())
+                .lastName(user.getLastName())
+                .fullName(fullName)
                 .role(user.getRole())
                 .createdAt(user.getCreatedAt())
                 .hasPassword(userPasswordRepository.existsByUser_Id(user.getId()))
                 .hasPasskey(passkeyCredentialRepository.existsByUser_Id(user.getId()))
                 .hasOAuth2(oAuth2AccountRepository.existsByUser_Id(user.getId()))
                 .build();
+    }
+
+    @Transactional
+    public UserResponse updateProfile(String email, org.teamzemo.scarletauth.dto.UpdateProfileRequest request) {
+        User user = userRepository.findByEmail(email)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        user.setFirstName(request.getFirstName());
+        user.setLastName(request.getLastName());
+        user = userRepository.save(user);
+
+        // Sync name change to scarlet-user downstream synchronously
+        try {
+            userServiceClient.syncUser(new org.teamzemo.scarletauth.dto.UserSyncRequest(
+                    user.getId(),
+                    user.getEmail(),
+                    user.getFirstName(),
+                    user.getLastName()
+            ));
+        } catch (Exception e) {
+            log.error("Failed to sync profile update to user service", e);
+            throw new RuntimeException("Profile update failed: Unable to sync changes: " + e.getMessage());
+        }
+
+        return toUserResponse(user);
     }
 
     @Transactional

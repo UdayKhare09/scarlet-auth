@@ -29,20 +29,24 @@ public class JwtService {
         this.refreshTokenExpirationMs = appProperties.getJwt().getRefreshTokenExpirationMs();
     }
 
-    public String generateAccessToken(String email, UUID userId, String fullName) {
-        return buildToken(email, userId, fullName, accessTokenExpirationMs, "access");
+    public String generateAccessToken(String email, UUID userId, String firstName, String lastName, String role) {
+        return buildToken(email, userId, firstName, lastName, role, accessTokenExpirationMs, "access");
     }
 
     public String generateRefreshToken(String email, UUID userId) {
-        return buildToken(email, userId, null, refreshTokenExpirationMs, "refresh");
+        return buildToken(email, userId, null, null, null, refreshTokenExpirationMs, "refresh");
     }
 
     public String generateAccessToken(Authentication authentication) {
         UserDetails userDetails = (UserDetails) authentication.getPrincipal();
-        return generateAccessToken(userDetails.getUsername(), null, null);
+        String role = userDetails.getAuthorities().stream()
+                .map(auth -> auth.getAuthority())
+                .findFirst()
+                .orElse("ROLE_USER");
+        return generateAccessToken(userDetails.getUsername(), null, null, null, role);
     }
 
-    private String buildToken(String subject, UUID userId, String fullName, long expirationMs, String tokenType) {
+    private String buildToken(String subject, UUID userId, String firstName, String lastName, String role, long expirationMs, String tokenType) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
 
@@ -56,7 +60,20 @@ public class JwtService {
             builder.claim("userId", userId.toString());
         }
 
-        if (fullName != null) {
+        if (firstName != null) {
+            builder.claim("firstName", firstName);
+        }
+
+        if (lastName != null) {
+            builder.claim("lastName", lastName);
+        }
+
+        if (role != null) {
+            builder.claim("role", role);
+        }
+
+        if (firstName != null) {
+            String fullName = firstName + (lastName != null && !lastName.isBlank() ? " " + lastName : "");
             builder.claim("fullName", fullName);
         }
 
