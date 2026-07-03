@@ -25,6 +25,7 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private final CookieUtils cookieUtils;
     private final UserRepository userRepository;
     private final AppProperties appProperties;
+    private final org.teamzemo.scarletauth.service.SessionService sessionService;
 
     @Override
     public void onAuthenticationSuccess(HttpServletRequest request,
@@ -53,10 +54,9 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                 .orElseThrow(() -> new RuntimeException("User not found after OAuth2 login"));
 
         String accessToken = jwtService.generateAccessToken(email, user.getId(), user.getFirstName(), user.getLastName(), user.getRole());
-        String refreshToken = jwtService.generateRefreshToken(email, user.getId());
+        sessionService.createSession(user, request, response);
 
         cookieUtils.setAccessTokenCookie(response, accessToken);
-        cookieUtils.setRefreshTokenCookie(response, refreshToken);
 
         log.info("OAuth2 login success for user: {}", email);
 

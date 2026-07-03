@@ -14,6 +14,7 @@ import org.teamzemo.scarletauth.repository.UserRepository;
 import org.teamzemo.scarletauth.security.CookieUtils;
 import org.teamzemo.scarletauth.security.JwtService;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.AuthenticationManager;
@@ -21,6 +22,7 @@ import org.springframework.security.authentication.UsernamePasswordAuthenticatio
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import java.util.Map;
 
 @Service
 @RequiredArgsConstructor
@@ -40,6 +42,7 @@ public class AuthService {
     private final CookieUtils cookieUtils;
     private final AuthenticationManager authenticationManager;
     private final org.teamzemo.scarletauth.client.UserServiceClient userServiceClient;
+    private final SessionService sessionService;
 
     @Transactional
     public AuthResponse register(RegisterRequest request) {
@@ -91,7 +94,7 @@ public class AuthService {
                 .build();
     }
 
-    public AuthResponse login(LoginRequest request, HttpServletResponse response) {
+    public AuthResponse login(LoginRequest request, HttpServletRequest httpRequest, HttpServletResponse response) {
         authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
         );
@@ -109,10 +112,9 @@ public class AuthService {
         }
 
         String accessToken = jwtService.generateAccessToken(user.getEmail(), user.getId(), user.getFirstName(), user.getLastName(), user.getRole());
-        String refreshToken = jwtService.generateRefreshToken(user.getEmail(), user.getId());
+        sessionService.createSession(user, httpRequest, response);
 
         cookieUtils.setAccessTokenCookie(response, accessToken);
-        cookieUtils.setRefreshTokenCookie(response, refreshToken);
 
         log.info("User logged in: {}", user.getEmail());
 
@@ -122,11 +124,23 @@ public class AuthService {
                 .build();
     }
 
-    public void logout(HttpServletResponse response) {
+    public void logout(HttpServletRequest request, HttpServletResponse response) {
+        String refreshToken = null;
+        if (request.getCookies() != null) {
+            refreshToken = java.util.Arrays.stream(request.getCookies())
+                    .filter(c -> "refresh_token".equals(c.getName()))
+                    .map(jakarta.servlet.http.Cookie::getValue)
+                    .findFirst()
+                    .orElse(null);
+        }
+        if (refreshToken != null && jwtService.isTokenValid(refreshToken)) {
+            String jti = jwtService.extractJti(refreshToken);
+            sessionService.revokeCurrentSession(jti);
+        }
         cookieUtils.clearAuthCookies(response);
     }
 
-    public AuthResponse refresh(String refreshToken, HttpServletResponse response) {
+    public AuthResponse refresh(String refreshToken, HttpServletRequest httpRequest, HttpServletResponse response) {
         if (!jwtService.isTokenValid(refreshToken)) {
             throw new RuntimeException("Invalid or expired refresh token");
         }
@@ -134,6 +148,12 @@ public class AuthService {
         String tokenType = jwtService.extractTokenType(refreshToken);
         if (!"refresh".equals(tokenType)) {
             throw new RuntimeException("Invalid token type");
+        }
+
+        String jti = jwtService.extractJti(refreshToken);
+        boolean isValidSession = sessionService.validateAndUpdateSession(jti);
+        if (!isValidSession) {
+            throw new RuntimeException("Session has been revoked or expired");
         }
 
         String email = jwtService.extractEmail(refreshToken);
@@ -243,27 +263,13 @@ public class AuthService {
     }
 
     @Transactional
-    public UserResponse updateProfile(String email, org.teamzemo.scarletauth.dto.UpdateProfileRequest request) {
-        User user = userRepository.findByEmail(email)
+    public void syncProfile(java.util.UUID userId, String firstName, String lastName) {
+        User user = userRepository.findById(userId)
                 .orElseThrow(() -> new RuntimeException("User not found"));
-        user.setFirstName(request.getFirstName());
-        user.setLastName(request.getLastName());
-        user = userRepository.save(user);
-
-        // Sync name change to scarlet-user downstream synchronously
-        try {
-            userServiceClient.syncUser(new org.teamzemo.scarletauth.dto.UserSyncRequest(
-                    user.getId(),
-                    user.getEmail(),
-                    user.getFirstName(),
-                    user.getLastName()
-            ));
-        } catch (Exception e) {
-            log.error("Failed to sync profile update to user service", e);
-            throw new RuntimeException("Profile update failed: Unable to sync changes: " + e.getMessage());
-        }
-
-        return toUserResponse(user);
+        user.setFirstName(firstName);
+        user.setLastName(lastName);
+        userRepository.save(user);
+        log.info("Profile name synced back from user service for user ID: {}", userId);
     }
 
     @Transactional
@@ -290,5 +296,78 @@ public class AuthService {
 
         userPasswordRepository.save(userPassword);
         log.info("Password changed for user: {}", email);
+    }
+
+    @Transactional
+    public AuthResponse googleLogin(String idToken, jakarta.servlet.http.HttpServletRequest httpRequest, jakarta.servlet.http.HttpServletResponse response) {
+        if (idToken == null || idToken.isBlank()) {
+            throw new RuntimeException("ID Token is blank");
+        }
+
+        Map<String, Object> payload;
+        try {
+            org.springframework.web.client.RestTemplate restTemplate = new org.springframework.web.client.RestTemplate();
+            String url = "https://oauth2.googleapis.com/tokeninfo?id_token=" + idToken;
+            payload = restTemplate.getForObject(url, Map.class);
+        } catch (Exception e) {
+            log.error("Failed to verify Google ID Token", e);
+            throw new RuntimeException("Google ID Token verification failed: " + e.getMessage());
+        }
+
+        if (payload == null || payload.containsKey("error_description")) {
+            throw new RuntimeException("Invalid Google ID Token");
+        }
+
+        String email = (String) payload.get("email");
+        if (email == null) {
+            throw new RuntimeException("Google ID Token does not contain email claim");
+        }
+
+        String firstName = (String) payload.get("given_name");
+        String lastName = (String) payload.get("family_name");
+
+        User user = userRepository.findByEmail(email).orElseGet(() -> {
+            log.info("Creating new user account from Google Login: {}", email);
+            User newUser = User.builder()
+                    .email(email)
+                    .firstName(firstName != null ? firstName : email.split("@")[0])
+                    .lastName(lastName != null ? lastName : "")
+                    .role("ROLE_USER")
+                    .emailVerified(true)
+                    .build();
+            newUser = userRepository.save(newUser);
+
+            // Sync new profile to user service downstream
+            try {
+                userServiceClient.syncUser(new org.teamzemo.scarletauth.dto.UserSyncRequest(
+                        newUser.getId(),
+                        newUser.getEmail(),
+                        newUser.getFirstName(),
+                        newUser.getLastName()
+                ));
+            } catch (Exception e) {
+                log.error("Failed to sync new Google user to user service", e);
+            }
+
+            return newUser;
+        });
+
+        // Generate tokens & session
+        String accessToken = jwtService.generateAccessToken(
+                user.getEmail(),
+                user.getId(),
+                user.getFirstName(),
+                user.getLastName(),
+                user.getRole()
+        );
+        sessionService.createSession(user, httpRequest, response);
+        cookieUtils.setAccessTokenCookie(response, accessToken);
+
+        log.info("Google native login successful for: {}", email);
+
+        return AuthResponse.builder()
+                .message("Login successful")
+                .user(toUserResponse(user))
+                .build();
     }
 }

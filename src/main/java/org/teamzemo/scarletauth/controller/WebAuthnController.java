@@ -7,6 +7,7 @@ import org.teamzemo.scarletauth.security.CookieUtils;
 import org.teamzemo.scarletauth.security.JwtService;
 import org.teamzemo.scarletauth.service.WebAuthnService;
 import jakarta.servlet.http.HttpServletResponse;
+import jakarta.servlet.http.HttpServletRequest;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.core.annotation.AuthenticationPrincipal;
@@ -24,6 +25,7 @@ public class WebAuthnController {
     private final WebAuthnService webAuthnService;
     private final JwtService jwtService;
     private final CookieUtils cookieUtils;
+    private final org.teamzemo.scarletauth.service.SessionService sessionService;
 
     @GetMapping("/register/options")
     public ResponseEntity<Map<String, Object>> getRegistrationOptions(
@@ -57,6 +59,7 @@ public class WebAuthnController {
     @PostMapping("/authenticate")
     public ResponseEntity<Map<String, Object>> verifyAuthentication(
             @RequestBody WebAuthnAuthenticationRequest request,
+            HttpServletRequest httpRequest,
             HttpServletResponse response) {
         User user = webAuthnService.verifyAuthentication(
                 request.getCredentialId(),
@@ -67,9 +70,8 @@ public class WebAuthnController {
         );
 
         String accessToken = jwtService.generateAccessToken(user.getEmail(), user.getId(), user.getFirstName(), user.getLastName(), user.getRole());
-        String refreshToken = jwtService.generateRefreshToken(user.getEmail(), user.getId());
+        sessionService.createSession(user, httpRequest, response);
         cookieUtils.setAccessTokenCookie(response, accessToken);
-        cookieUtils.setRefreshTokenCookie(response, refreshToken);
 
         return ResponseEntity.ok(Map.of(
                 "message", "Authentication successful",

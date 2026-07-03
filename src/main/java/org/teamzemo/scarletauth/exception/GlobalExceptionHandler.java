@@ -62,6 +62,10 @@ public class GlobalExceptionHandler {
                 message.contains("already exists") ||
                 message.contains("does not belong") ||
                 message.contains("Invalid") ||
+                message.contains("invalid") ||
+                message.contains("incorrect") ||
+                message.contains("mismatch") ||
+                message.contains("match") ||
                 message.contains("No password") ||
                 message.contains("Email not verified"))) {
             log.warn("Business error: {}", message);

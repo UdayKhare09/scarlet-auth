@@ -35,14 +35,15 @@ public class AuthController {
 
     @PostMapping("/login")
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request,
+                                               HttpServletRequest httpRequest,
                                                HttpServletResponse response) {
-        AuthResponse authResponse = authService.login(request, response);
+        AuthResponse authResponse = authService.login(request, httpRequest, response);
         return ResponseEntity.ok(authResponse);
     }
 
     @PostMapping("/logout")
-    public ResponseEntity<AuthResponse> logout(HttpServletResponse response) {
-        authService.logout(response);
+    public ResponseEntity<AuthResponse> logout(HttpServletRequest request, HttpServletResponse response) {
+        authService.logout(request, response);
         return ResponseEntity.ok(
                 AuthResponse.builder().message("Logged out successfully").build()
         );
@@ -66,7 +67,7 @@ public class AuthController {
             );
         }
 
-        AuthResponse authResponse = authService.refresh(refreshToken, response);
+        AuthResponse authResponse = authService.refresh(refreshToken, request, response);
         return ResponseEntity.ok(authResponse);
     }
 
@@ -112,5 +113,14 @@ public class AuthController {
         return ResponseEntity.ok(
                 AuthResponse.builder().message("Password changed successfully.").build()
         );
+    }
+
+    @PostMapping("/google-login")
+    public ResponseEntity<AuthResponse> googleLogin(
+            @Valid @RequestBody GoogleLoginRequest request,
+            HttpServletRequest httpRequest,
+            HttpServletResponse response) {
+        AuthResponse authResponse = authService.googleLogin(request.getIdToken(), httpRequest, response);
+        return ResponseEntity.ok(authResponse);
     }
 }

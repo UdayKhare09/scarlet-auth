@@ -59,8 +59,9 @@ public class MfaController {
 
     @PostMapping("/complete")
     public ResponseEntity<AuthResponse> completeMfa(@RequestBody CompleteMfaRequest request,
+                                                     jakarta.servlet.http.HttpServletRequest httpRequest,
                                                      HttpServletResponse response) {
-        AuthResponse authResponse = mfaService.completeMfaChallenge(request, response);
+        AuthResponse authResponse = mfaService.completeMfaChallenge(request, httpRequest, response);
         return ResponseEntity.ok(authResponse);
     }
 }

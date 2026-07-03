@@ -39,6 +39,7 @@ public class MfaService {
     private final EmailService emailService;
     private final JwtService jwtService;
     private final CookieUtils cookieUtils;
+    private final SessionService sessionService;
 
     private static final String ALPHANUMERIC = "ABCDEFGHJKLMNPQRSTUVWXY3456789";
     private static final SecureRandom secureRandom = new SecureRandom();
@@ -172,7 +173,7 @@ public class MfaService {
     }
 
     @Transactional
-    public AuthResponse completeMfaChallenge(CompleteMfaRequest request, HttpServletResponse response) {
+    public AuthResponse completeMfaChallenge(CompleteMfaRequest request, jakarta.servlet.http.HttpServletRequest httpRequest, HttpServletResponse response) {
         PendingMfaToken pending = resolvePendingToken(request.getPendingToken());
         User user = pending.getUser();
 
@@ -185,9 +186,8 @@ public class MfaService {
         pendingMfaTokenRepository.delete(pending);
 
         String accessToken = jwtService.generateAccessToken(user.getEmail(), user.getId(), user.getFirstName(), user.getLastName(), user.getRole());
-        String refreshToken = jwtService.generateRefreshToken(user.getEmail(), user.getId());
+        sessionService.createSession(user, httpRequest, response);
         cookieUtils.setAccessTokenCookie(response, accessToken);
-        cookieUtils.setRefreshTokenCookie(response, refreshToken);
 
         log.info("MFA completed via {} for user: {}", request.getMethod(), user.getEmail());
         return AuthResponse.builder().message("Login successful").build();

@@ -34,7 +34,11 @@ public class JwtService {
     }
 
     public String generateRefreshToken(String email, UUID userId) {
-        return buildToken(email, userId, null, null, null, refreshTokenExpirationMs, "refresh");
+        return generateRefreshToken(email, userId, UUID.randomUUID().toString());
+    }
+
+    public String generateRefreshToken(String email, UUID userId, String jti) {
+        return buildToken(email, userId, null, null, null, refreshTokenExpirationMs, "refresh", jti);
     }
 
     public String generateAccessToken(Authentication authentication) {
@@ -47,6 +51,10 @@ public class JwtService {
     }
 
     private String buildToken(String subject, UUID userId, String firstName, String lastName, String role, long expirationMs, String tokenType) {
+        return buildToken(subject, userId, firstName, lastName, role, expirationMs, tokenType, null);
+    }
+
+    private String buildToken(String subject, UUID userId, String firstName, String lastName, String role, long expirationMs, String tokenType, String jti) {
         Date now = new Date();
         Date expiry = new Date(now.getTime() + expirationMs);
 
@@ -55,6 +63,10 @@ public class JwtService {
                 .issuedAt(now)
                 .expiration(expiry)
                 .claim("type", tokenType);
+
+        if (jti != null) {
+            builder.id(jti);
+        }
 
         if (userId != null) {
             builder.claim("userId", userId.toString());
@@ -86,6 +98,10 @@ public class JwtService {
 
     public String extractTokenType(String token) {
         return extractClaim(token, claims -> claims.get("type", String.class));
+    }
+
+    public String extractJti(String token) {
+        return extractClaim(token, Claims::getId);
     }
 
     public boolean isTokenValid(String token) {
