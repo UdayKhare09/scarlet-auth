@@ -41,7 +41,7 @@ public class AuthController {
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request,
                                                HttpServletRequest httpRequest,
                                                HttpServletResponse response) {
-        log.info("Login request received for identifier: {}", request.getIdentifier());
+        log.info("Login request received for email: {}", request.getEmail());
         AuthResponse authResponse = authService.login(request, httpRequest, response);
         return ResponseEntity.ok(authResponse);
     }
