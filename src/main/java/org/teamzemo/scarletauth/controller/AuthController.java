@@ -7,11 +7,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.Arrays;
 
+@Slf4j
 @RestController
 @RequestMapping("/api/auth")
 @RequiredArgsConstructor
@@ -21,12 +23,14 @@ public class AuthController {
 
     @PostMapping("/register")
     public ResponseEntity<AuthResponse> register(@Valid @RequestBody RegisterRequest request) {
+        log.info("Registration request received for email: {}", request.getEmail());
         AuthResponse response = authService.register(request);
         return ResponseEntity.ok(response);
     }
 
     @PostMapping("/verify-email")
     public ResponseEntity<AuthResponse> verifyEmail(@RequestParam String token) {
+        log.info("Email verification request received");
         authService.verifyEmail(token);
         return ResponseEntity.ok(
                 AuthResponse.builder().message("Email verified successfully. You can now log in.").build()
@@ -37,6 +41,7 @@ public class AuthController {
     public ResponseEntity<AuthResponse> login(@Valid @RequestBody LoginRequest request,
                                                HttpServletRequest httpRequest,
                                                HttpServletResponse response) {
+        log.info("Login request received for identifier: {}", request.getIdentifier());
         AuthResponse authResponse = authService.login(request, httpRequest, response);
         return ResponseEntity.ok(authResponse);
     }
