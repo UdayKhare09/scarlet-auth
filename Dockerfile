@@ -2,9 +2,9 @@
 FROM maven:3.9.6-eclipse-temurin-21 AS build
 WORKDIR /app
 
-# Pre-fetch Maven dependencies for layer caching
+# Pre-fetch Maven dependencies for layer caching (only required dependencies)
 COPY pom.xml .
-RUN mvn dependency:go-offline -B
+RUN mvn dependency:resolve dependency:resolve-plugins -B
 
 # Copy source and build package
 COPY src ./src
