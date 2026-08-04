@@ -66,3 +66,36 @@ app:
     rp-origin: ${WEBAUTHN_RP_ORIGIN:http://localhost}
   frontend-url: ${FRONTEND_URL:http://localhost}
   user-service-url: ${USER_SERVICE_URL:http://localhost:8081}
+
+# ─── Observability ────────────────────────────────────────────────────────────
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info,prometheus,metrics,threaddump,heapdump,loggers
+  endpoint:
+    health:
+      show-details: always
+    prometheus:
+      enabled: true
+  prometheus:
+    metrics:
+      export:
+        enabled: true
+  tracing:
+    sampling:
+      probability: 1.0   # 100% in dev/staging; tune to 0.1 in high-traffic prod
+  metrics:
+    tags:
+      service: ${spring.application.name}
+      team: teamzemo
+    distribution:
+      percentiles-histogram:
+        http.server.requests: true
+      slo:
+        http.server.requests: 50ms,100ms,200ms,500ms,1s,2s
+
+spring.config.import: ""   # suppress "no config import" warning if any
+
+# OTel OTLP exporter — picks up OTEL_EXPORTER_OTLP_ENDPOINT from env
+management.otlp.tracing.endpoint: ${OTEL_EXPORTER_OTLP_ENDPOINT:http://otel-collector:4318}/v1/traces
