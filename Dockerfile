@@ -17,11 +17,4 @@ WORKDIR /app
 COPY --from=build /app/target/*.jar app.jar
 COPY --from=pyroscope-downloader /pyroscope.jar pyroscope.jar
 EXPOSE 80
-ENTRYPOINT ["java", \
-  "-javaagent:/app/pyroscope.jar", \
-  "-Dpyroscope.server.address=${PYROSCOPE_SERVER_ADDRESS:http://pyroscope:4040}", \
-  "-Dpyroscope.application.name=${PYROSCOPE_APPLICATION_NAME:scarlet-auth}", \
-  "-Dpyroscope.format=jfr", \
-  "-Dpyroscope.profiler.event=cpu", \
-  "-Dpyroscope.profiler.alloc=512k", \
-  "-jar", "app.jar"]
+ENTRYPOINT ["java", "-javaagent:/app/pyroscope.jar", "-jar", "app.jar"]
